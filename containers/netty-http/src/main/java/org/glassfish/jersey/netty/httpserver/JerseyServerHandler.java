@@ -17,9 +17,6 @@
 package org.glassfish.jersey.netty.httpserver;
 
 import java.net.URI;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
 
 import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.core.MediaType;
@@ -35,11 +32,9 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
-import org.glassfish.jersey.internal.PropertiesDelegate;
 import org.glassfish.jersey.netty.connector.internal.NettyInputStream;
 import org.glassfish.jersey.server.ContainerRequest;
 import org.glassfish.jersey.server.ResourceConfig;
-import org.glassfish.jersey.server.internal.ContainerUtils;
 
 /**
  * {@link io.netty.channel.ChannelInboundHandler} which servers as a bridge
@@ -81,7 +76,13 @@ class JerseyServerHandler extends ChannelInboundHandlerAdapter {
             }
 
             nettyInputStream.clear(); // clearing the content - possible leftover from previous request processing.
-            final ContainerRequest requestContext = createContainerRequest(ctx, req);
+            final ContainerRequest requestContext = NettyContainerRequest.create(
+                    ctx,
+                    req.method().name(),
+                    req.uri(),
+                    baseUri,
+                    resourceConfig
+            );
 
             requestContext.setWriter(new NettyResponseWriter(ctx, req, container));
 
@@ -122,64 +123,17 @@ class JerseyServerHandler extends ChannelInboundHandlerAdapter {
         }
 
         if (msg instanceof HttpContent) {
-          HttpContent httpContent = (HttpContent) msg;
+            HttpContent httpContent = (HttpContent) msg;
 
-          ByteBuf content = httpContent.content();
-          if (content.isReadable()) {
-              nettyInputStream.publish(content);
-          }
+            ByteBuf content = httpContent.content();
+            if (content.isReadable()) {
+                nettyInputStream.publish(content);
+            }
 
-          if (msg instanceof LastHttpContent) {
-              nettyInputStream.complete(null);
-          }
-      }
-    }
-
-    /**
-     * Create Jersey {@link ContainerRequest} based on Netty {@link HttpRequest}.
-     *
-     * @param ctx Netty channel context.
-     * @param req Netty Http request.
-     * @return created Jersey Container Request.
-     */
-    private ContainerRequest createContainerRequest(ChannelHandlerContext ctx, HttpRequest req) {
-
-        String s = req.uri().startsWith("/") ? req.uri().substring(1) : req.uri();
-        URI requestUri = URI.create(baseUri + ContainerUtils.encodeUnsafeCharacters(s));
-
-        ContainerRequest requestContext = new ContainerRequest(
-                baseUri, requestUri, req.method().name(), getSecurityContext(ctx),
-                new PropertiesDelegate() {
-
-                    private final Map<String, Object> properties = new HashMap<>();
-
-                    @Override
-                    public Object getProperty(String name) {
-                        return properties.get(name);
-                    }
-
-                    @Override
-                    public Collection<String> getPropertyNames() {
-                        return properties.keySet();
-                    }
-
-                    @Override
-                    public void setProperty(String name, Object object) {
-                        properties.put(name, object);
-                    }
-
-                    @Override
-                    public void removeProperty(String name) {
-                        properties.remove(name);
-                    }
-                }, resourceConfig);
-
-        return requestContext;
-    }
-
-
-    private NettySecurityContext getSecurityContext(ChannelHandlerContext ctx) {
-        return new NettySecurityContext(ctx);
+            if (msg instanceof LastHttpContent) {
+                nettyInputStream.complete(null);
+            }
+        }
     }
 
     @Override

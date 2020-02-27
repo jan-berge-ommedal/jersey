@@ -19,8 +19,16 @@ package org.glassfish.jersey.netty.httpserver;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 
+import javax.inject.Inject;
+import javax.inject.Provider;
 import javax.ws.rs.core.Application;
+import javax.ws.rs.core.GenericType;
 
+import io.netty.channel.ChannelHandlerContext;
+import org.glassfish.jersey.internal.inject.AbstractBinder;
+import org.glassfish.jersey.internal.inject.ReferencingFactory;
+import org.glassfish.jersey.internal.util.collection.Ref;
+import org.glassfish.jersey.process.internal.RequestScoped;
 import org.glassfish.jersey.server.ApplicationHandler;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.server.spi.Container;
@@ -37,7 +45,7 @@ class NettyHttpContainer implements Container {
     private volatile ApplicationHandler appHandler;
 
     public NettyHttpContainer(Application application) {
-        this.appHandler = new ApplicationHandler(application);
+        this.appHandler = new ApplicationHandler(application, new NettyBinder());
         this.appHandler.onStartup(this);
     }
 
@@ -60,7 +68,7 @@ class NettyHttpContainer implements Container {
     public void reload(ResourceConfig configuration) {
         appHandler.onShutdown(this);
 
-        appHandler = new ApplicationHandler(configuration);
+        appHandler = new ApplicationHandler(configuration.register(new NettyBinder()));
         appHandler.onReload(this);
         appHandler.onStartup(this);
     }
@@ -82,4 +90,25 @@ class NettyHttpContainer implements Container {
     ScheduledExecutorService getScheduledExecutorService() {
         return appHandler.getInjectionManager().getInstance(ScheduledExecutorServiceProvider.class).getExecutorService();
     }
+
+    private static class NettyBinder extends AbstractBinder {
+        @Override
+        protected void configure() {
+            bindFactory(NettyRequestReferencingFactory.class)
+                    .to(ChannelHandlerContext.class)
+                    .in(RequestScoped.class);
+
+            bindFactory(ReferencingFactory.<ChannelHandlerContext>referenceFactory())
+                    .to(new GenericType<Ref<ChannelHandlerContext>>() {})
+                    .in(RequestScoped.class);
+        }
+    }
+
+    private static class NettyRequestReferencingFactory extends ReferencingFactory<ChannelHandlerContext> {
+        @Inject
+        public NettyRequestReferencingFactory(final Provider<Ref<ChannelHandlerContext>> referenceFactory) {
+            super(referenceFactory);
+        }
+    }
+
 }

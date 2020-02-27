@@ -19,27 +19,21 @@ package org.glassfish.jersey.netty.httpserver;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.security.Principal;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
-import javax.ws.rs.core.SecurityContext;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http2.Http2DataFrame;
+import io.netty.handler.codec.http2.Http2Headers;
 import io.netty.handler.codec.http2.Http2HeadersFrame;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
-import org.glassfish.jersey.internal.PropertiesDelegate;
 import org.glassfish.jersey.netty.connector.internal.NettyInputStream;
 import org.glassfish.jersey.server.ContainerRequest;
 import org.glassfish.jersey.server.ResourceConfig;
-import org.glassfish.jersey.server.internal.ContainerUtils;
 
 /**
  * Jersey Netty HTTP/2 handler.
@@ -121,38 +115,15 @@ class JerseyHttp2ServerHandler extends ChannelDuplexHandler {
      * @return created Jersey Container Request.
      */
     private ContainerRequest createContainerRequest(ChannelHandlerContext ctx, Http2HeadersFrame http2Headers) {
+        Http2Headers headers = http2Headers.headers();
 
-        String path = http2Headers.headers().path().toString();
-
-        String s = path.startsWith("/") ? path.substring(1) : path;
-        URI requestUri = URI.create(baseUri + ContainerUtils.encodeUnsafeCharacters(s));
-
-        ContainerRequest requestContext = new ContainerRequest(
-                baseUri, requestUri, http2Headers.headers().method().toString(), getSecurityContext(),
-                new PropertiesDelegate() {
-
-                    private final Map<String, Object> properties = new HashMap<>();
-
-                    @Override
-                    public Object getProperty(String name) {
-                        return properties.get(name);
-                    }
-
-                    @Override
-                    public Collection<String> getPropertyNames() {
-                        return properties.keySet();
-                    }
-
-                    @Override
-                    public void setProperty(String name, Object object) {
-                        properties.put(name, object);
-                    }
-
-                    @Override
-                    public void removeProperty(String name) {
-                        properties.remove(name);
-                    }
-                }, resourceConfig);
+        ContainerRequest requestContext = NettyContainerRequest.create(
+                ctx,
+                headers.method().toString(),
+                headers.path().toString(),
+                baseUri,
+                resourceConfig
+        );
 
         // request entity handling.
         if (!http2Headers.isEndStream()) {
@@ -175,8 +146,8 @@ class JerseyHttp2ServerHandler extends ChannelDuplexHandler {
         }
 
         // copying headers from netty request to jersey container request context.
-        for (CharSequence name : http2Headers.headers().names()) {
-            requestContext.headers(name.toString(), mapToString(http2Headers.headers().getAll(name)));
+        for (CharSequence name : headers.names()) {
+            requestContext.headers(name.toString(), mapToString(headers.getAll(name)));
         }
 
         return requestContext;
@@ -192,28 +163,4 @@ class JerseyHttp2ServerHandler extends ChannelDuplexHandler {
         return result;
     }
 
-    private SecurityContext getSecurityContext() {
-        return new SecurityContext() {
-
-            @Override
-            public boolean isUserInRole(final String role) {
-                return false;
-            }
-
-            @Override
-            public boolean isSecure() {
-                return false;
-            }
-
-            @Override
-            public Principal getUserPrincipal() {
-                return null;
-            }
-
-            @Override
-            public String getAuthenticationScheme() {
-                return null;
-            }
-        };
-    }
 }
