@@ -187,4 +187,10 @@ class JerseyServerHandler extends ChannelInboundHandlerAdapter {
         ctx.close();
     }
 
+    @Override
+    public void channelUnregistered(ChannelHandlerContext ctx) throws Exception {
+        nettyInputStream.close();
+        super.channelUnregistered(ctx);
+    }
+
 }
